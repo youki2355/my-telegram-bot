@@ -1,0 +1,14 @@
+{
+    "name": "my-voice-riddle-bot",
+    "version": "1.0.0",
+    "description": "Telegram bot with voice riddle and protected replies",
+    "main": "api/index.js",
+    "type": "module",
+    "scripts": {
+      "start": "node api/index.js"
+    },
+    "dependencies": {
+      "@vercel/kv": "^1.0.1",
+      "telegraf": "^4.16.3"
+    }
+  }
