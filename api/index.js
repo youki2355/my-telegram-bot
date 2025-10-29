@@ -51,24 +51,27 @@ const TEXTS = {
   forward_to_admin_failed: "⚠️ 将您的信息转发给管理员时出错，请稍后再试或直接联系管理员。",
   banned_user_ignored: "抱歉，您已被限制使用此机器人。",
   // vvvvvvvvvvvvvvvv  请用这个【新的】版本替换掉旧的 vvvvvvvvvvvvvvvv
-admin_notification: (userName, userUsername, userId) => {
-    let userInfo = userName || '';
-    if (userUsername) {
-        // 对用户名进行基本的 MarkdownV2 转义 (防止用户名本身包含特殊字符)
-        // 这里只转义几个常见的，更完善的需要专门的库或函数
-        const escapedUsername = userUsername.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
-        userInfo += userInfo ? ` (@${escapedUsername})` : `@${escapedUsername}`;
+  admin_notification: (userName, userUsername, userId) => {
+    // --- 更严格的 MarkdownV2 转义函数 ---
+    const escapeMarkdownV2 = (text) => {
+        // 对所有 MarkdownV2 保留字符进行转义
+        // _ * [ ] ( ) ~ ` > # + - = | { } . !
+        return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+    };
+
+    // 转义用户名和名字（如果存在）
+    const escapedUserName = escapeMarkdownV2(userName || '');
+    const escapedUserUsername = userUsername ? `@${escapeMarkdownV2(userUsername)}` : '';
+
+    let userInfo = escapedUserName || '';
+    if (escapedUserUsername) {
+        userInfo += userInfo ? ` (${escapedUserUsername})` : escapedUserUsername;
     }
-    // --- 关键修改：转义圆括号，并确保 ID 的反引号也被正确处理 ---
-    // ID 本身是数字，通常不需要转义，但外面的括号和反引号需要注意
+    // ID 本身是数字，通常不需要转义，但外面的括号和反引号需要
     userInfo += ` \\(ID: \`${userId}\`\\)`; // 转义 ( 和 )
 
-    // 对 userName 也进行基本的转义
-    const escapedUserName = (userName || '').replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
-    userInfo = userInfo.replace(userName || '', escapedUserName); // 替换原始名字为转义后的
-
     return `🔔 用户 ${userInfo} 已通过语音验证，进入人工审核。\n⬇️ 请直接【回复】下方由机器人转发的【用户消息】进行沟通 ⬇️`;
-  }
+}
 // ^^^^^^^^^^^^^^^^  替换范围到这里结束 ^^^^^^^^^^^^^^^^
 };
 
