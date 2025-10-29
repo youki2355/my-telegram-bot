@@ -412,8 +412,8 @@ bot.on('message', async (ctx) => {
                     // 发送带 Ban 按钮的通知
                     adminNotificationCtx = await bot.telegram.sendMessage(ADMIN_ID,
                         TEXTS.admin_notification(userName, userUsername, userId), {
-                            parse_mode: 'MarkdownV2',
-                            ...Markup.inlineKeyboard([ Markup.button.callback('🚫 Ban 用户', `ban_user_${userId}`) ])
+                            //parse_mode: 'MarkdownV2',
+                            //...Markup.inlineKeyboard([ Markup.button.callback('🚫 Ban 用户', `ban_user_${userId}`) ])
                         }
                     );
                     await logToTestAccount({ // 手动构造 ctx 记录日志
