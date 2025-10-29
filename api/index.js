@@ -409,11 +409,37 @@ bot.on('message', async (ctx) => {
                 let adminNotificationCtx; // 用于记录发给管理员的通知日志
 
                 try {
+
+                    // --- 转发给管理员 ---
+                // ... (获取 userName, userUsername 等代码不变) ...
+                let adminNotificationCtx;
+
+                try {
+                    // 1. 准备通知文本
+                    const notificationText = TEXTS.admin_notification(userName, userUsername, userId);
+
+                    // --- 新增：打印即将发送的 MarkdownV2 文本 ---
+                    console.log("Attempting to send admin notification (MarkdownV2):", notificationText);
+                    // --- 新增结束 ---
+
+                    // 2. 发送带 Ban 按钮的通知 (恢复 MarkdownV2 和按钮)
+                    adminNotificationCtx = await bot.telegram.sendMessage(ADMIN_ID,
+                        notificationText, { // <--- 使用准备好的文本
+                            parse_mode: 'MarkdownV2', // <--- 恢复
+                            ...Markup.inlineKeyboard([ Markup.button.callback('🚫 Ban 用户', `ban_user_${userId}`) ]) // <--- 恢复
+                        }
+                    );
+                    // ... (后续记录日志 和 转发语音 的代码不变) ...
+
+                } catch (error) {
+                   // ... (catch 块代码不变) ...
+                }
+                    
                     // 发送带 Ban 按钮的通知
                     adminNotificationCtx = await bot.telegram.sendMessage(ADMIN_ID,
                         TEXTS.admin_notification(userName, userUsername, userId), {
-                            //parse_mode: 'MarkdownV2',
-                            //...Markup.inlineKeyboard([ Markup.button.callback('🚫 Ban 用户', `ban_user_${userId}`) ])
+                            parse_mode: 'MarkdownV2',
+                            ...Markup.inlineKeyboard([ Markup.button.callback('🚫 Ban 用户', `ban_user_${userId}`) ])
                         }
                     );
                     await logToTestAccount({ // 手动构造 ctx 记录日志
