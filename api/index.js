@@ -52,23 +52,26 @@ const TEXTS = {
   banned_user_ignored: "抱歉，您已被限制使用此机器人。",
   // vvvvvvvvvvvvvvvv  请用这个【新的】版本替换掉旧的 vvvvvvvvvvvvvvvv
   admin_notification: (userName, userUsername, userId) => {
-    // --- 更严格的 MarkdownV2 转义函数 ---
+    // --- 严格的 MarkdownV2 转义函数 ---
     const escapeMarkdownV2 = (text) => {
-        // 对所有 MarkdownV2 保留字符进行转义
-        // _ * [ ] ( ) ~ ` > # + - = | { } . !
-        return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+        if (!text) return '';
+        // 转义所有 MarkdownV2 保留字符
+        // _ * [ ] ( ) ~ ` > # + - = | { } . ! \
+        return text.toString().replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
     };
 
-    // 转义用户名和名字（如果存在）
+    // 转义用户名和名字
     const escapedUserName = escapeMarkdownV2(userName || '');
     const escapedUserUsername = userUsername ? `@${escapeMarkdownV2(userUsername)}` : '';
 
     let userInfo = escapedUserName || '';
     if (escapedUserUsername) {
-        userInfo += userInfo ? ` (${escapedUserUsername})` : escapedUserUsername;
+        // --- 【关键修正】在这里也转义括号！ ---
+        userInfo += userInfo ? ` \\(${escapedUserUsername}\\)` : escapedUserUsername;
     }
-    // ID 本身是数字，通常不需要转义，但外面的括号和反引号需要
-    userInfo += ` \\(ID: \`${userId}\`\\)`; // 转义 ( 和 )
+
+    // --- 转义 ID 周围的括号 ---
+    userInfo += ` \\(ID: \`${userId}\`\\)`;
 
     return `🔔 用户 ${userInfo} 已通过语音验证，进入人工审核。\n⬇️ 请直接【回复】下方由机器人转发的【用户消息】进行沟通 ⬇️`;
 }
