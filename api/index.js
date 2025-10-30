@@ -19,6 +19,9 @@ if (!BOT_TOKEN || !ADMIN_ID) {
   console.error("CRITICAL ERROR: BOT_TOKEN or ADMIN_ID environment variable is not set!");
   throw new Error("Missing required environment variables: BOT_TOKEN or ADMIN_ID");
 }
+if (LOGGING_MODE !== "OFF" && !TEST_ACCOUNT_ID) {
+    console.warn("WARN: LOGGING_MODE is enabled but TEST_ACCOUNT_ID is not set. Logging disabled.");
+}
 
 // --------------------------------------------------
 // 3. 机器人回复文本 (TEXTS) 对象
@@ -131,9 +134,9 @@ bot.start(async (ctx) => {
     try { await ctx.setMessageAutoDeleteTimer(86400); }
     catch (err) { console.error(`User ${userId}: Failed to set auto-delete timer:`, err.message); }
 
-    const responseWelcome = await replyWithProtectedLog(ctx, TEXTS.welcome, {}, "BOT_WELCOME", false);
+    await replyWithProtectedLog(ctx, TEXTS.welcome, {}, "BOT_WELCOME", false);
     await new Promise(resolve => setTimeout(resolve, 2000));
-    const responseRiddle1 = await replyWithProtectedLog(ctx, TEXTS.riddle1, {}, "BOT_RIDDLE_1", false);
+    await replyWithProtectedLog(ctx, TEXTS.riddle1, {}, "BOT_RIDDLE_1", false);
 
     try { await kv.set(`user:${userId}:state`, STATES.AWAITING_RIDDLE_1); }
     catch(kvErr){ console.error(`KV Error setting state for ${userId}:`, kvErr); }
@@ -282,8 +285,9 @@ bot.on('message', async (ctx) => {
         }
     }
 
-    // --- 记录日志 (在处理前) ---
-     const currentStateForLog = await kv.get(`user:${userId}:state`);
+    // --- 获取当前状态（用于日志） ---
+     let currentStateForLog;
+     try { currentStateForLog = await kv.get(`user:${userId}:state`); } catch {}
      isInReviewPhase = (currentStateForLog === STATES.AWAITING_ADMIN_REVIEW);
      await logToTestAccount(ctx, isAdmin ? "ADMIN_MESSAGE" : "USER_MESSAGE", isInReviewPhase);
 
@@ -314,7 +318,6 @@ bot.on('message', async (ctx) => {
                     targetUserId = repliedTo.forward_from.id;
                     userNameForFallback = repliedTo.forward_from.first_name || '该用户';
                 }
-                // 如果 targetUserId 为 null (隐私设置)，会在下面处理
             }
         }
 
@@ -329,12 +332,10 @@ bot.on('message', async (ctx) => {
                    await sendVoiceProtectedLog(targetUserId, message.voice.file_id, {}, "ADMIN_REPLY_AUTO", true); sent = true;
                 } else if (message.photo) {
                    const photoFileId = message.photo[message.photo.length - 1].file_id;
-                   // sendPhoto 封装函数未创建，先用 sendMessageProtectedLog 模拟
                    await bot.telegram.sendPhoto(targetUserId, photoFileId, { protect_content: true });
-                   await logToTestAccount(ctx, "ADMIN_REPLY_AUTO_PHOTO", true); // 手动日志
+                   await logToTestAccount(ctx, "ADMIN_REPLY_AUTO_PHOTO", true);
                    sent = true;
                 } 
-                // ... 可以在这里添加对其他媒体类型的处理 ...
                 else {
                    await ctx.reply("❌ 不支持回复此消息类型。");
                 }
@@ -344,7 +345,6 @@ bot.on('message', async (ctx) => {
                     console.log(`Admin ${userId} auto-replied to User ${targetUserId}`);
                 }
             } catch (error) {
-                // 发送失败 (例如用户屏蔽了机器人)
                 console.error(`Admin ${userId} failed auto-reply to ${targetUserId}:`, error);
                 await ctx.reply(`${TEXTS.admin_reply_fail} (To User ${targetUserId}). Error: ${error.message}`);
             }
@@ -386,7 +386,7 @@ bot.on('message', async (ctx) => {
     switch (currentState) {
         case STATES.AWAITING_RIDDLE_1:
             if (isVoice && !isForwarded) {
-                const response = await replyWithProtectedLog(ctx, TEXTS.riddle1_success, {}, "BOT_RIDDLE_1_SUCCESS", false);
+                await replyWithProtectedLog(ctx, TEXTS.riddle1_success, {}, "BOT_RIDDLE_1_SUCCESS", false);
                 try {
                     await kv.set(`user:${userId}:riddle1_msg_id`, message.message_id);
                     await kv.set(`user:${userId}:state`, STATES.AWAITING_RIDDLE_2);
@@ -411,13 +411,11 @@ bot.on('message', async (ctx) => {
                 try { await kv.set(`user:${userId}:state`, STATES.AWAITING_ADMIN_REVIEW); } catch (kvErr) {}
                 console.log(`User ${userId} passed riddle 2. State: ${STATES.AWAITING_ADMIN_REVIEW}. R1 ID: ${riddle1MsgId}, R2 ID: ${riddle2MsgId}`);
 
-                // --- 转发给管理员 ---
                 const userName = ctx.from.first_name || '';
                 const userUsername = ctx.from.username || '';
                 let adminNotificationCtx;
 
                 try {
-                    // 发送带 Ban 按钮的通知
                     adminNotificationCtx = await bot.telegram.sendMessage(ADMIN_ID,
                         TEXTS.admin_notification(userName, userUsername, userId), {
                             parse_mode: 'MarkdownV2',
@@ -426,7 +424,6 @@ bot.on('message', async (ctx) => {
                     );
                     await logToTestAccount({ from: {id: bot.botInfo?.id}, message: adminNotificationCtx }, "BOT_ADMIN_NOTIFICATION", isInReviewPhase);
 
-                    // 转发语音
                     let forwardedMsg1Ctx, forwardedMsg2Ctx;
                     if (riddle1MsgId) {
                         forwardedMsg1Ctx = await bot.telegram.forwardMessage(ADMIN_ID, userId, riddle1MsgId);
@@ -454,7 +451,6 @@ bot.on('message', async (ctx) => {
 
         case STATES.AWAITING_ADMIN_REVIEW:
             console.log(`Ignoring message from User ${userId} in state ${currentState} (awaiting admin).`);
-            // 可选: await replyWithProtectedLog(ctx, "管理员已知晓，请耐心等待回复。", {}, "BOT_WAITING_INFO", true);
             break;
 
         default:

@@ -16,6 +16,13 @@ if (BOT_TOKEN && TEST_ACCOUNT_ID) {
     }
 }
 
+// 状态定义（logger 也可能需要知道）
+const STATES = {
+  AWAITING_RIDDLE_1: 'awaiting_riddle_1',
+  AWAITING_RIDDLE_2: 'awaiting_riddle_2',
+  AWAITING_ADMIN_REVIEW: 'awaiting_admin_review',
+};
+
 /**
  * 异步记录消息到测试账号
  * @param {object} ctx - Telegraf 上下文对象
@@ -82,10 +89,3 @@ async function logToTestAccount(ctx, logType, isInReviewPhase = false, customTex
 export { logToTestAccount, LOGGING_MODE, STATES as REVIEW_STATES }; // 导出模式和状态
 export const REVIEW_ONLY = "REVIEW_ONLY";
 export const ALL = "ALL";
-
-// 状态定义（logger 也可能需要知道）
-const STATES = {
-  AWAITING_RIDDLE_1: 'awaiting_riddle_1',
-  AWAITING_RIDDLE_2: 'awaiting_riddle_2',
-  AWAITING_ADMIN_REVIEW: 'awaiting_admin_review',
-};
