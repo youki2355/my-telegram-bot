@@ -16,19 +16,19 @@ if (BOT_TOKEN && TEST_ACCOUNT_ID) {
     }
 }
 
+// --- 【关键修正】 ---
 // 状态定义（logger 也可能需要知道）
 const STATES = {
   AWAITING_RIDDLE_1: 'awaiting_riddle_1',
   AWAITING_RIDDLE_2: 'awaiting_riddle_2',
   AWAITING_ADMIN_REVIEW: 'awaiting_admin_review',
 };
+// --- 【关键修正结束】 ---
+
 
 /**
  * 异步记录消息到测试账号
- * @param {object} ctx - Telegraf 上下文对象
- * @param {string} logType - 日志类型标识
- * @param {boolean} isInReviewPhase - 标记是否处于审核阶段
- * @param {string} [customText] - （可选）要发送的自定义文本
+ * ( ... 函数内容 ... )
  */
 async function logToTestAccount(ctx, logType, isInReviewPhase = false, customText = null) {
     // 1. 检查日志功能是否开启
@@ -59,33 +59,32 @@ async function logToTestAccount(ctx, logType, isInReviewPhase = false, customTex
             logPrefix = `[${logType}] ADMIN (${userId})`;
         }
 
-        // 优先发送自定义文本
         if (customText) {
             await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, `[${timestamp}] ${customText}`);
             return;
         }
 
-        // 尝试复制原始消息
         if (message?.message_id && message.chat?.id) {
-            await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, logPrefix); // 先发前缀
+            await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, logPrefix);
             await botInstanceForLogging.telegram.copyMessage(TEST_ACCOUNT_ID, message.chat.id, message.message_id);
         }
-        // 如果无法复制（例如是 CallbackQuery 或无 message_id），则发送文本描述
         else if (ctx.callbackQuery) {
              await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, `${logPrefix} | Button Click: ${ctx.callbackQuery.data}`);
         }
-         else if (message?.text) { // 如果是文本消息但无法复制
+         else if (message?.text) {
              await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, `${logPrefix} | Text: ${message.text}`);
-        } else { // 其他情况
+        } else {
             await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, `${logPrefix} | (Non-copyable event)`);
         }
 
     } catch (error) {
         console.error("Logger Error:", error.message);
-        // 记录日志失败不应影响主流程
     }
 }
 
-export { logToTestAccount, LOGGING_MODE, STATES as REVIEW_STATES }; // 导出模式和状态
+// --- 【关键修正】 ---
+// 在 STATES 定义【之后】再导出
+export { logToTestAccount, LOGGING_MODE, STATES as REVIEW_STATES };
 export const REVIEW_ONLY = "REVIEW_ONLY";
 export const ALL = "ALL";
+// --- 【关键修正结束】 ---
