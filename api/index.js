@@ -264,7 +264,8 @@ bot.on('callback_query', async (ctx) => {
 });
 
 
-// (D) 处理用户的普通消息 (核心逻辑)
+// (F) 处理用户的普通消息 (核心逻辑)
+// [已更新：修正了管理员回复逻辑]
 bot.on('message', async (ctx) => {
     const userId = ctx.from.id;
     const message = ctx.message;
@@ -305,63 +306,97 @@ bot.on('message', async (ctx) => {
     }
 
     // --- 记录用户或管理员消息日志 ---
-    // (在处理前记录原始消息)
-     const currentStateForLog = await kv.get(`user:${userId}:state`); // 获取当前状态以判断日志阶段
+     const currentStateForLog = await kv.get(`user:${userId}:state`);
      isInReviewPhase = (currentStateForLog === STATES.AWAITING_ADMIN_REVIEW);
      await logToTestAccount(ctx, isAdmin ? "ADMIN_MESSAGE" : "USER_MESSAGE", isInReviewPhase);
 
 
-    // --- 3. 处理管理员的【直接回复】 ---
+    // --- 3. 【!! 已重构 !!】处理管理员的【回复】 ---
     if (isAdmin && message.reply_to_message) {
         const repliedTo = message.reply_to_message;
-        if (repliedTo.from?.id === bot.botInfo?.id && repliedTo.forward_from) {
-            const originalUser = repliedTo.forward_from;
-            const originalUserId = originalUser.id;
+        let targetUserId = null; // 目标用户 ID
+        let userNameForFallback = '该用户'; // 用于回退提示的名字
 
-            if (originalUserId) {
-                try {
-                    let sent = false;
-                    if (message.text) {
-                       await sendMessageProtectedLog(originalUserId, message.text, {}, "ADMIN_REPLY_AUTO", true); sent = true;
-                    } else if (message.voice) {
-                       await sendVoiceProtectedLog(originalUserId, message.voice.file_id, {}, "ADMIN_REPLY_AUTO", true); sent = true;
-                    } // ... 其他类型
-                    // else if (message.photo) { ... }
+        // 检查被回复的消息是否是机器人发的
+        if (repliedTo.from?.id === bot.botInfo?.id) {
 
-                    if (sent) {
-                        await ctx.reply(`${TEXTS.admin_reply_success} (To User ${originalUserId})`);
-                        console.log(`Admin ${userId} auto-replied to User ${originalUserId}`);
-                    } else {
-                        await ctx.reply("❌ 不支持回复此消息类型。");
-                    }
-
-                } catch (error) {
-                    console.error(`Admin ${userId} failed auto-reply to ${originalUserId}:`, error);
-                    await ctx.reply(TEXTS.admin_reply_fallback_prompt(originalUserId, originalUser.first_name),
-                        Markup.inlineKeyboard([ Markup.button.callback('✍️ 准备手动回复', `reply_fallback_to_${originalUserId}`) ])
-                    );
+            // 场景 A: 管理员回复了【文本通知】 (🔔 用户 ...)
+            if (repliedTo.text && repliedTo.text.startsWith('🔔 用户')) {
+                console.log("Admin replied to notification text.");
+                const match = repliedTo.text.match(/ID: `(\d+)`/);
+                if (match && match[1]) {
+                    targetUserId = parseInt(match[1], 10);
+                } else {
+                    console.error("Admin replied to notification, but couldn't parse User ID!");
+                    await ctx.reply("❌ 回复失败，无法从通知消息中解析到用户ID。");
+                    return; // 结束
                 }
-            } else {
-                console.warn(`Admin ${userId} replied, but failed get ID from forward_from.`);
-                const notificationTextUserIdMatch = repliedTo.text?.match(/ID: `(\d+)`/); // 尝试从被回复的通知文本中提取ID
-                const fallbackUserId = notificationTextUserIdMatch ? notificationTextUserIdMatch[1] : null;
-                 if (fallbackUserId) {
-                    await ctx.reply(TEXTS.admin_reply_fallback_prompt(fallbackUserId, originalUser?.first_name || ''), // originalUser 可能不存在
-                        Markup.inlineKeyboard([ Markup.button.callback('✍️ 准备手动回复', `reply_fallback_to_${fallbackUserId}`) ])
-                    );
-                 } else {
-                    await ctx.reply("❌ 自动回复失败！因对方隐私设置无法获取用户ID。\n请查找之前的通知消息，使用 `/reply <用户ID> <消息内容>` 手动回复。");
-                 }
             }
-        } else { console.log("Admin replied to non-forwarded message, ignoring."); }
+            // 场景 B: 管理员回复了【转发的消息】 (语音/图片等)
+            else if (repliedTo.forward_date) { // 使用 forward_date 作为转发的通用标记
+                console.log("Admin replied to forwarded message.");
+                if (repliedTo.forward_from) {
+                    targetUserId = repliedTo.forward_from.id; // 尝试获取 ID
+                    userNameForFallback = repliedTo.forward_from.first_name || '该用户';
+                }
+                // 如果 targetUserId 在这里是 null (因为隐私设置)，我们会在下面处理
+            }
+        }
+
+        // --- 统一处理回复 ---
+        if (targetUserId) {
+            // 【提取ID成功】(来自场景A，或场景B且用户隐私未开启)
+            try {
+                let sent = false;
+                if (message.text) {
+                   await sendMessageProtectedLog(targetUserId, message.text, {}, "ADMIN_REPLY_AUTO", true); sent = true;
+                } else if (message.voice) {
+                   await sendVoiceProtectedLog(targetUserId, message.voice.file_id, {}, "ADMIN_REPLY_AUTO", true); sent = true;
+                } else if (message.photo) {
+                   const photoFileId = message.photo[message.photo.length - 1].file_id;
+                   await bot.telegram.sendPhoto(targetUserId, photoFileId, { protect_content: true }); sent = true;
+                } // ... 其他类型
+
+                if (sent) {
+                    await ctx.reply(`${TEXTS.admin_reply_success} (To User ${targetUserId})`);
+                    console.log(`Admin ${userId} auto-replied to User ${targetUserId}`);
+                } else {
+                    await ctx.reply("❌ 不支持回复此消息类型。");
+                }
+            } catch (error) {
+                // 发送失败 (例如用户屏蔽了机器人)
+                console.error(`Admin ${userId} failed auto-reply to ${targetUserId}:`, error);
+                await ctx.reply(`${TEXTS.admin_reply_fail} (To User ${targetUserId}). Error: ${error.message}`);
+            }
+        } 
+        else if (repliedTo.forward_date) {
+            // 【提取ID失败】(只可能来自场景B且用户隐私开启)
+            console.warn(`Admin ${userId} replied, but failed get ID from forward_from (privacy).`);
+
+            // 此时我们无法知道 User ID，所以无法提供带 ID 的按钮
+            // 这是这个方案的根本限制
+            await ctx.reply("❌ 自动回复失败！\n因对方开启了隐私设置，无法从【这条转发的消息】中获取用户ID。\n\n**请【回复】那条【文本通知】消息** (包含ID:...)，或者使用 `/reply <用户ID> <消息>` 手动回复。", { parse_mode: 'Markdown' });
+        }
+        else {
+            // 管理员回复了机器人的其他消息（非通知、非转发）
+            console.log("Admin replied to an irrelevant message, ignoring.");
+        }
         return; // 管理员回复处理完毕
     }
+    // --- 【!! 重构结束 !!】---
+
 
     // --- 4. 忽略管理员的其他非命令、非回复消息 ---
     if (isAdmin && (!message.text || !message.text.startsWith('/'))) {
         console.log("Ignoring non-command, non-reply message from admin.");
         return;
     }
+
+    // --- 5. 处理用户的正常流程 ---
+    // ( ... 以下所有 case STATES.AWAITING_RIDDLE_1: ... 等代码保持不变 ...)
+    // ( ... )
+    // ( ... )
+});
 
     // --- 5. 处理用户的正常流程 ---
     const isVoice = !!message.voice;
