@@ -238,6 +238,21 @@ bot.on('callback_query', async (ctx) => {
     }
 });
 
+// 场景 A: 回复【文本通知】
+            if (repliedTo.text && repliedTo.text.startsWith('🔔 用户')) {
+                console.log("Admin replied to notification text.");
+
+                // vvvvvvvvvvvvvvvv 【请在这里添加新代码】 vvvvvvvvvvvvvvvv
+
+                // 【关键调试】: 打印出机器人实际看到的被回复文本
+                console.log("Replied-to text content IS:", repliedTo.text);
+
+                // ^^^^^^^^^^^^^^^^ 【请在这里添加新代码】 ^^^^^^^^^^^^^^^^
+
+                const match = repliedTo.text.match(/\(ID: (\d+)\)/); // <-- 失败的行
+                if (match && match[1]) {
+                    targetUserId = parseInt(match[1], 10);
+// ... (后续代码不变) ...
 
 // (D) 处理用户的普通消息 (核心逻辑)
 bot.on('message', async (ctx) => {
