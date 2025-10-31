@@ -303,18 +303,17 @@ bot.on('message', async (ctx) => {
             // 场景 A: 回复【文本通知】
             if (repliedTo.text && repliedTo.text.startsWith('🔔 用户')) {
                 console.log("Admin replied to notification text.");
-
-                // vvvvvvvvvvvvvvvv 【请在这里添加新代码】 vvvvvvvvvvvvvvvv
-
                 // 【关键调试】: 打印出机器人实际看到的被回复文本
                 console.log("Replied-to text content IS:", repliedTo.text);
-
-                // ^^^^^^^^^^^^^^^^ 【请在这里添加新代码】 ^^^^^^^^^^^^^^^^
-
-                const match = repliedTo.text.match(/\(ID: (\d+)\)/); // <-- 失败的行
+                const match = repliedTo.text.match(/\(ID: (\d+)\)/);
                 if (match && match[1]) {
                     targetUserId = parseInt(match[1], 10);
-// ... (后续代码不变) ...
+                } else {
+                    console.error("Admin replied to notification, but couldn't parse User ID!");
+                    await ctx.reply("❌ 回复失败，无法从通知消息中解析到用户ID。");
+                    return;
+                }
+            }
             // 场景 B: 回复【转发的消息】
             else if (repliedTo.forward_date) {
                 console.log("Admin replied to forwarded message.");
