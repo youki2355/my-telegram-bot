@@ -1,4 +1,4 @@
-// api/index.js
+// api/index.js (最终版，包含审核通过逻辑)
 
 // --------------------------------------------------
 // 1. 导入“插件”和日志模块
@@ -48,9 +48,10 @@ const TEXTS = {
   admin_invalid_ban_format: "❌ 格式错误。请使用：/ban <用户ID>",
   admin_invalid_unban_format: "❌ 格式错误。请使用：/unban <用户ID>",
   admin_user_id_nan: "❌ 用户ID必须是数字。",
+  admin_approve_success: (userId) => `✅ 用户 ${userId} 已标记为【审核通过】。`, // <-- 新增
+  user_approved_notification: "恭喜！您的人工审核已通过！您现在可以通过此机器人与管理员联系。", // <-- 新增
   rate_limit_exceeded: "抱歉，您今天发送的消息已达上限 (50条)，请明天再试。",
   forward_to_admin_failed: "⚠️ 将您的信息转发给管理员时出错，请稍后再试或直接联系管理员。",
-  // banned_user_ignored: "抱歉，您已被限制使用此机器人。", // (已确认不回复)
   admin_notification: (userName, userUsername, userId) => {
       const escapeMarkdownV2 = (text) => {
           if (!text) return '';
@@ -83,16 +84,14 @@ const DAILY_LIMIT = 50;
 // 5. 封装回复函数 (统一添加保护和日志)
 // --------------------------------------------------
 async function replyWithProtectedLog(ctx, text, extra = {}, logType = "BOT_RESPONSE", isInReviewPhase = false) {
-    // 发送给用户的回复，总是受保护
     const responseCtx = await ctx.reply(text, { ...extra, protect_content: true });
-    // 记录日志 (模拟 ctx.message 为刚发送的消息，以便 logger 复制)
     const logCtx = { ...ctx, message: responseCtx, from: { id: bot.botInfo?.id } };
     await logToTestAccount(logCtx, logType, isInReviewPhase);
     return responseCtx;
 }
 async function sendMessageProtectedLog(userId, text, extra = {}, logType = "ADMIN_REPLY", isInReviewPhase = false) {
     const responseCtx = await bot.telegram.sendMessage(userId, text, { ...extra, protect_content: true });
-    const logCtx = { from: { id: ADMIN_ID }, message: responseCtx, chat: { id: userId } }; // 模拟管理员发送
+    const logCtx = { from: { id: ADMIN_ID }, message: responseCtx, chat: { id: userId } };
     await logToTestAccount(logCtx, logType, isInReviewPhase);
     return responseCtx;
 }
@@ -102,7 +101,7 @@ async function sendMessageProtectedLog(userId, text, extra = {}, logType = "ADMI
     await logToTestAccount(logCtx, logType, isInReviewPhase);
     return responseCtx;
 }
-// ... 可以为 sendPhoto 等创建类似的封装 ...
+// ... (其他 sendX 函数) ...
 
 // --------------------------------------------------
 // 6. 核心处理器
@@ -143,23 +142,20 @@ bot.start(async (ctx) => {
     console.log(`User ${userId} started. State set to ${STATES.AWAITING_RIDDLE_1}`);
 });
 
-// (B) 处理管理员命令: /reply, /ban, /unban
+// (B) 处理管理员命令: /reply, /ban, /unban (不变)
 bot.command('reply', async (ctx) => {
     await logToTestAccount(ctx, "ADMIN_CMD_REPLY", true);
     if (ctx.from.id !== ADMIN_ID) return;
-
+    // ... (代码与上一版相同) ...
     const parts = ctx.message.text.split(' ');
     if (parts.length < 3) return ctx.reply(TEXTS.admin_invalid_reply_format);
     const targetUserId = parseInt(parts[1], 10);
     const replyMessageText = parts.slice(2).join(' ');
     if (isNaN(targetUserId) || !replyMessageText) return ctx.reply(TEXTS.admin_invalid_reply_format);
-
     try {
         await sendMessageProtectedLog(targetUserId, replyMessageText, {}, "ADMIN_REPLY_MANUAL", true);
         await ctx.reply(`${TEXTS.admin_reply_success} (To User ${targetUserId})`);
-        console.log(`Admin ${ctx.from.id} manually replied to User ${targetUserId}`);
     } catch (error) {
-        console.error(`Admin ${ctx.from.id} failed manual reply to ${targetUserId}:`, error);
         await ctx.reply(`${TEXTS.admin_reply_fail} (To User ${targetUserId}). Error: ${error.message}`);
     }
 });
@@ -167,17 +163,15 @@ bot.command('reply', async (ctx) => {
 bot.command('ban', async (ctx) => {
     await logToTestAccount(ctx, "ADMIN_CMD_BAN", true);
     if (ctx.from.id !== ADMIN_ID) return;
+    // ... (代码与上一版相同) ...
     const parts = ctx.message.text.split(' ');
     if (parts.length !== 2) return ctx.reply(TEXTS.admin_invalid_ban_format);
     const targetUserId = parseInt(parts[1], 10);
     if (isNaN(targetUserId)) return ctx.reply(TEXTS.admin_user_id_nan);
-
     try {
         await kv.sadd(BANNED_USERS_KEY, targetUserId.toString());
         await ctx.reply(TEXTS.admin_ban_success(targetUserId));
-        console.log(`Admin ${ctx.from.id} banned User ${targetUserId}`);
     } catch (kvErr) {
-        console.error(`KV Error banning user ${targetUserId}:`, kvErr);
         await ctx.reply(TEXTS.admin_ban_fail(targetUserId, kvErr.message));
     }
 });
@@ -185,38 +179,38 @@ bot.command('ban', async (ctx) => {
 bot.command('unban', async (ctx) => {
     await logToTestAccount(ctx, "ADMIN_CMD_UNBAN", true);
     if (ctx.from.id !== ADMIN_ID) return;
+    // ... (代码与上一版相同) ...
     const parts = ctx.message.text.split(' ');
     if (parts.length !== 2) return ctx.reply(TEXTS.admin_invalid_unban_format);
     const targetUserId = parseInt(parts[1], 10);
     if (isNaN(targetUserId)) return ctx.reply(TEXTS.admin_user_id_nan);
-
     try {
         await kv.srem(BANNED_USERS_KEY, targetUserId.toString());
         await ctx.reply(TEXTS.admin_unban_success(targetUserId));
-        console.log(`Admin ${ctx.from.id} unbanned User ${targetUserId}`);
     } catch (kvErr) {
-        console.error(`KV Error unbanning user ${targetUserId}:`, kvErr);
         await ctx.reply(TEXTS.admin_unban_fail(targetUserId, kvErr.message));
     }
 });
 
-// (C) 处理按钮点击 (Ban 用户 和 手动回复回退)
+// (C) 处理按钮点击 (【!! 已修改 !!】 新增 approve_user 逻辑)
 bot.on('callback_query', async (ctx) => {
     const adminUserId = ctx.from.id;
-    await logToTestAccount(ctx, "CALLBACK_QUERY", true); // 按钮点击始终记录
+    await logToTestAccount(ctx, "CALLBACK_QUERY", true);
 
     if (adminUserId !== ADMIN_ID) return await ctx.answerCbQuery("只有管理员可以操作");
 
     const data = ctx.callbackQuery.data;
     const banPrefix = 'ban_user_';
     const fallbackPrefix = 'reply_fallback_to_';
+    const approvePrefix = 'approve_user_'; // <-- 【!! 新增 !!】
 
     try {
         if (data && data.startsWith(banPrefix)) {
             const targetUserId = data.substring(banPrefix.length);
             await kv.sadd(BANNED_USERS_KEY, targetUserId);
             await ctx.answerCbQuery(`用户 ${targetUserId} 已 Ban`);
-            await ctx.editMessageReplyMarkup(undefined);
+            // 尝试移除按钮 (如果消息未被删除)
+            try { await ctx.editMessageReplyMarkup(undefined); } catch {}
             console.log(`Admin ${adminUserId} banned User ${targetUserId} via button`);
             await ctx.reply(TEXTS.admin_ban_success(targetUserId));
 
@@ -224,10 +218,23 @@ bot.on('callback_query', async (ctx) => {
             const targetUserId = data.substring(fallbackPrefix.length);
             const commandText = `/reply ${targetUserId} `;
             await ctx.answerCbQuery("请在输入框输入回复");
-            await ctx.editMessageReplyMarkup(undefined);
+            try { await ctx.editMessageReplyMarkup(undefined); } catch {}
             await ctx.reply(`请在输入框粘贴并补全回复: \`${commandText}\``, { parse_mode: 'MarkdownV2' });
             console.log(`Admin ${adminUserId} initiated fallback reply to User ${targetUserId}`);
 
+        } else if (data && data.startsWith(approvePrefix)) { // <-- 【!! 新增 !!】
+            const targetUserId = data.substring(approvePrefix.length);
+            // 1. 更新 KV 状态
+            await kv.set(`user:${targetUserId}:state`, STATES.COMPLETED);
+            await ctx.answerCbQuery(`用户 ${targetUserId} 已审核通过`);
+            // 2. 移除按钮
+            try { await ctx.editMessageReplyMarkup(undefined); } catch {}
+            // 3. 回复管理员
+            await ctx.reply(TEXTS.admin_approve_success(targetUserId));
+            console.log(`Admin ${adminUserId} approved User ${targetUserId}`);
+            // 4. 通知用户
+            await sendMessageProtectedLog(targetUserId, TEXTS.user_approved_notification, {}, "BOT_APPROVED", true);
+        
         } else {
             await ctx.answerCbQuery("未知操作");
         }
@@ -237,7 +244,6 @@ bot.on('callback_query', async (ctx) => {
         try { await ctx.reply(`处理按钮点击时出错: ${error.message}`);} catch {}
     }
 });
-
 
 
 // (D) 处理用户的普通消息 (核心逻辑)
@@ -250,16 +256,16 @@ bot.on('message', async (ctx) => {
     // --- 0. 忽略测试账号的消息 ---
     if (userId === TEST_ACCOUNT_ID) {
          console.log("Ignoring message from test account.");
-         return; // 立即停止
+         return;
     }
-
+    
     // --- 1. 黑名单检查 (非管理员) ---
     if (!isAdmin) {
         try {
             const isBanned = await kv.sismember(BANNED_USERS_KEY, userId.toString());
             if (isBanned) { 
                 console.log(`Banned user ${userId} sent message. Ignoring.`); 
-                await logToTestAccount(ctx, "USER_BANNED_IGNORED", false); // 记录被ban用户的消息
+                await logToTestAccount(ctx, "USER_BANNED_IGNORED", false);
                 return; 
             }
         } catch (kvErr) { console.error(`KV Error checking ban status for user ${userId}:`, kvErr); }
@@ -279,7 +285,7 @@ bot.on('message', async (ctx) => {
             if (dailyMessageCount === DAILY_LIMIT + 1) {
                 await replyWithProtectedLog(ctx, TEXTS.rate_limit_exceeded, {}, "BOT_RATE_LIMIT", false);
             } else {
-                 await logToTestAccount(ctx, "USER_RATE_LIMITED", false); // 记录被限流的消息
+                 await logToTestAccount(ctx, "USER_RATE_LIMITED", false);
             }
             console.log(`User ${userId} rate limited. Count: ${dailyMessageCount}`);
             return;
@@ -289,23 +295,20 @@ bot.on('message', async (ctx) => {
     // --- 获取当前状态（用于日志） ---
      let currentStateForLog;
      try { currentStateForLog = await kv.get(`user:${userId}:state`); } catch {}
-     isInReviewPhase = (currentStateForLog === STATES.AWAITING_ADMIN_REVIEW);
+     isInReviewPhase = (currentStateForLog === STATES.AWAITING_ADMIN_REVIEW || currentStateForLog === STATES.COMPLETED);
      await logToTestAccount(ctx, isAdmin ? "ADMIN_MESSAGE" : "USER_MESSAGE", isInReviewPhase);
 
 
-    // --- 3. 处理管理员的【回复】 ---
+    // --- 3. 处理管理员的【回复】 (不变) ---
     if (isAdmin && message.reply_to_message) {
+        // ... (与上一版完全相同的回复逻辑) ...
         const repliedTo = message.reply_to_message;
         let targetUserId = null;
         let userNameForFallback = '该用户';
-
         if (repliedTo.from?.id === bot.botInfo?.id) {
-            // 场景 A: 回复【文本通知】
             if (repliedTo.text && repliedTo.text.startsWith('🔔 用户')) {
                 console.log("Admin replied to notification text.");
-                // 【关键调试】: 打印出机器人实际看到的被回复文本
-                console.log("Replied-to text content IS:", repliedTo.text);
-                const match = repliedTo.text.match(/\(ID: (\d+)\)/);
+                const match = repliedTo.text.match(/\(ID: (\d+)\)/); // <-- 使用我们修复后的 Regex
                 if (match && match[1]) {
                     targetUserId = parseInt(match[1], 10);
                 } else {
@@ -314,7 +317,6 @@ bot.on('message', async (ctx) => {
                     return;
                 }
             }
-            // 场景 B: 回复【转发的消息】
             else if (repliedTo.forward_date) {
                 console.log("Admin replied to forwarded message.");
                 if (repliedTo.forward_from) {
@@ -323,10 +325,7 @@ bot.on('message', async (ctx) => {
                 }
             }
         }
-
-        // --- 统一处理回复 ---
         if (targetUserId) {
-            // 【提取ID成功】
             try {
                 let sent = false;
                 if (message.text) {
@@ -342,7 +341,6 @@ bot.on('message', async (ctx) => {
                 else {
                    await ctx.reply("❌ 不支持回复此消息类型。");
                 }
-
                 if (sent) {
                     await ctx.reply(`${TEXTS.admin_reply_success} (To User ${targetUserId})`);
                     console.log(`Admin ${userId} auto-replied to User ${targetUserId}`);
@@ -353,7 +351,6 @@ bot.on('message', async (ctx) => {
             }
         } 
         else if (repliedTo.forward_date) {
-            // 【提取ID失败】(隐私设置)
             console.warn(`Admin ${userId} replied, but failed get ID from forward_from (privacy).`);
             await ctx.reply("❌ 自动回复失败！\n因对方开启了隐私设置，无法从【这条转发的消息】中获取用户ID。\n\n**请【回复】那条【文本通知】消息** (包含ID:...)，或者使用 `/reply <用户ID> <消息>` 手动回复。", { parse_mode: 'Markdown' });
         }
@@ -384,7 +381,7 @@ bot.on('message', async (ctx) => {
     }
 
     console.log(`Processing message from User ${userId}. State: ${currentState}, isVoice: ${isVoice}, isForwarded: ${isForwarded}`);
-    isInReviewPhase = (currentState === STATES.AWAITING_ADMIN_REVIEW);
+    isInReviewPhase = (currentState === STATES.AWAITING_ADMIN_REVIEW || currentState === STATES.COMPLETED);
 
     switch (currentState) {
         case STATES.AWAITING_RIDDLE_1:
@@ -419,14 +416,23 @@ bot.on('message', async (ctx) => {
                 let adminNotificationCtx;
 
                 try {
+                    // --- 【!! 已修改 !!】 ---
+                    // 发送带 Ban 按钮 和 审核通过 按钮的通知
                     adminNotificationCtx = await bot.telegram.sendMessage(ADMIN_ID,
                         TEXTS.admin_notification(userName, userUsername, userId), {
                             parse_mode: 'MarkdownV2',
-                            ...Markup.inlineKeyboard([ Markup.button.callback('🚫 Ban 用户', `ban_user_${userId}`) ])
+                            ...Markup.inlineKeyboard([
+                                // 一行放两个按钮
+                                Markup.button.callback('🚫 Ban 用户', `ban_user_${userId}`),
+                                Markup.button.callback('✅ 审核通过', `approve_user_${userId}`)
+                            ])
                         }
                     );
+                    // --- 【!! 修改结束 !!】 ---
+                    
                     await logToTestAccount({ from: {id: bot.botInfo?.id}, message: adminNotificationCtx }, "BOT_ADMIN_NOTIFICATION", isInReviewPhase);
 
+                    // 转发语音
                     let forwardedMsg1Ctx, forwardedMsg2Ctx;
                     if (riddle1MsgId) {
                         forwardedMsg1Ctx = await bot.telegram.forwardMessage(ADMIN_ID, userId, riddle1MsgId);
@@ -452,9 +458,27 @@ bot.on('message', async (ctx) => {
             }
             break;
 
+        // --- 【!! 已修改 !!】 ---
         case STATES.AWAITING_ADMIN_REVIEW:
-            console.log(`Ignoring message from User ${userId} in state ${currentState} (awaiting admin).`);
+        case STATES.COMPLETED: // 两个状态执行相同逻辑
+            // 用户通过审核后，继续转发他们的消息给管理员
+            console.log(`User ${userId} (in review/completed) sent new message. Forwarding to admin.`);
+            try {
+                // 1. (可选) 发送一个简单的文本提示
+                await bot.telegram.sendMessage(ADMIN_ID, `(用户 ${userId} 发来一条新消息，供您参考):`);
+                
+                // 2. 转发用户的这条新消息
+                const forwardedMsgCtx = await bot.telegram.forwardMessage(ADMIN_ID, userId, message.message_id);
+                
+                // 3. 记录日志
+                await logToTestAccount({ from: {id: userId}, message: forwardedMsgCtx, chat: {id: userId} }, "FORWARD_FOLLOWUP_TO_ADMIN", true);
+
+            } catch (error) {
+                console.error(`Failed to forward follow-up message from ${userId} to admin:`, error);
+                try { await bot.telegram.sendMessage(ADMIN_ID, `⚠️ 转发用户 ${userId} 的后续消息时出错: ${error.message}`); } catch {}
+            }
             break;
+        // --- 【!! 修改结束 !!】 ---
 
         default:
             await replyWithProtectedLog(ctx, TEXTS.default, {}, "BOT_DEFAULT", false);

@@ -12,16 +12,17 @@ if (BOT_TOKEN && TEST_ACCOUNT_ID) {
     botInstanceForLogging = new Telegraf(BOT_TOKEN);
 } else {
     if (LOGGING_MODE !== "OFF") {
-         console.warn("WARN: LOGGING_MODE is enabled but TEST_ACCOUNT_ID or BOT_TOKEN is not set. Logging disabled.");
+        console.warn("WARN: LOGGING_MODE is enabled but TEST_ACCOUNT_ID or BOT_TOKEN is not set. Logging disabled.");
     }
 }
 
 // --- 【关键修正】 ---
 // 状态定义（logger 也可能需要知道）
 const STATES = {
-  AWAITING_RIDDLE_1: 'awaiting_riddle_1',
-  AWAITING_RIDDLE_2: 'awaiting_riddle_2',
-  AWAITING_ADMIN_REVIEW: 'awaiting_admin_review',
+    AWAITING_RIDDLE_1: 'awaiting_riddle_1',
+    AWAITING_RIDDLE_2: 'awaiting_riddle_2',
+    AWAITING_ADMIN_REVIEW: 'awaiting_admin_review',
+    COMPLETED: 'completed' // <--- 【!! 在这里添加新状态 !!】
 };
 // --- 【关键修正结束】 ---
 
@@ -69,10 +70,10 @@ async function logToTestAccount(ctx, logType, isInReviewPhase = false, customTex
             await botInstanceForLogging.telegram.copyMessage(TEST_ACCOUNT_ID, message.chat.id, message.message_id);
         }
         else if (ctx.callbackQuery) {
-             await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, `${logPrefix} | Button Click: ${ctx.callbackQuery.data}`);
+            await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, `${logPrefix} | Button Click: ${ctx.callbackQuery.data}`);
         }
-         else if (message?.text) {
-             await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, `${logPrefix} | Text: ${message.text}`);
+        else if (message?.text) {
+            await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, `${logPrefix} | Text: ${message.text}`);
         } else {
             await botInstanceForLogging.telegram.sendMessage(TEST_ACCOUNT_ID, `${logPrefix} | (Non-copyable event)`);
         }
