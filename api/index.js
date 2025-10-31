@@ -302,7 +302,7 @@ bot.on('message', async (ctx) => {
             // 场景 A: 回复【文本通知】
             if (repliedTo.text && repliedTo.text.startsWith('🔔 用户')) {
                 console.log("Admin replied to notification text.");
-                const match = repliedTo.text.match(/\\\(ID: `(\d+)`\\\)/);
+                const match = repliedTo.text.match(/\(ID: (\d+)\)/);
                 if (match && match[1]) {
                     targetUserId = parseInt(match[1], 10);
                 } else {
